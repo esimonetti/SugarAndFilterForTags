@@ -18,7 +18,6 @@ class CustomFilterApi extends FilterApi
     {
         if ($field == 'tag' && !empty($filter['$and_in']) && is_array($filter['$and_in'])) {
 
-            // if there is more than one tag
             $module_name = $q->getFromBean()->module_name;
             $main_table = $q->getFromAlias();
 
