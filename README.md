@@ -1,5 +1,5 @@
 # SugarAndFilterForTags
-Added a new type of filter ($and_in) with an AND condition between all tags passed to the $in condition
+Added a new type of filter ($and_in) with an AND condition between all tags passed to the $and_in condition
 
 ## Notes
 The caviet of this solution is that when passing few tags to the request, the system might reach the database join limit imposed by the underlying technology. This solution works best with a handful of tags selected at most, as two additional joins are enforced for every tag passed
