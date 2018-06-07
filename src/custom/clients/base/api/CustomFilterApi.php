@@ -3,7 +3,9 @@
 // Enrico Simonetti
 // enricosimonetti.com
 
-// 2018-06-06 on 8.0.0 with MySQL
+// 2018-06-07 on 8.0.0 with MySQL
+
+use Doctrine\DBAL\Connection;
 
 class CustomFilterApi extends FilterApi
 {
@@ -16,44 +18,33 @@ class CustomFilterApi extends FilterApi
     {
         if ($field == 'tag' && !empty($filter['$and_in']) && is_array($filter['$and_in'])) {
 
-            // if there is only one tag, use the parent method
-            if (count($filter['$and_in']) == 1) {
-                $filter['$in'] = $filter['$and_in'];
-                unset($filter['$and_in']);
-                parent::addFilter($field, $filter, $where, $q);
-            } else {
+            // if there is more than one tag
+            $module_name = $q->getFromBean()->module_name;
+            $main_table = $q->getFromAlias();
 
-                // exception if more than 5 tags are passed, to hard limit the number of joins
-                if (count($filter['$and_in']) > 5) {
-                    throw new SugarApiExceptionInvalidParameter('LBL_TOO_MANY_AND_IN_CONDITIONS');
-                }
+            $tags_lowercase = array_map('strtolower', $filter['$and_in']);
 
-                // if there is more than one tag
-                $module_name = $q->getFromBean()->module_name;
-                $main_table = $q->getFromAlias();
+            $qb = DBManagerFactory::getInstance()->getConnection()->createQueryBuilder();
+            $qb->select('tbr.bean_id')
+                ->from('tags', 't')
+                ->leftJoin('t', 'tag_bean_rel', 'tbr', 't.id = tbr.tag_id')
+                ->where('t.deleted = ' . $qb->createPositionalParameter(0))
+                ->andWhere('tbr.deleted = ' . $qb->createPositionalParameter(0))
+                ->andWhere('tbr.bean_module = ' . $qb->createPositionalParameter($module_name))
+                ->andWhere($qb->expr()->in(
+                    't.name_lower',
+                    $qb->createPositionalParameter((array) $tags_lowercase, Connection::PARAM_STR_ARRAY)
+                ))
+                ->groupBy('tbr.bean_id')
+                ->having('count(distinct(t.id)) = ' . $qb->createPositionalParameter(count($filter['$and_in'])));
 
-                $counter = 1;
-
-                // add two inner join per tag
-                foreach ($filter['$and_in'] as $tag_name) {
-                    $tags_relate_table = 'tag_bean_rel_' . $counter;
-                    $tags_table = 'tags_' . $counter;
-
-                    $q->joinTable('tag_bean_rel', array('alias' => $tags_relate_table, 'joinType' => 'INNER'))
-                        ->on()
-                        ->equalsField($main_table.'.id', $tags_relate_table . '.bean_id')
-                        ->equals($tags_relate_table . '.bean_module', $module_name)
-                        ->equals($tags_relate_table . '.deleted', 0);
-
-                    $q->joinTable('tags', array('alias' => $tags_table, 'joinType' => 'INNER'))
-                        ->on()
-                        ->equalsField($tags_relate_table . '.tag_id', $tags_table . '.id')
-                        ->equals($tags_table . '.deleted', 0)
-                        ->equals($tags_table . '.name_lower', strtolower($tag_name));
-
-                    $counter++;
-                }
-            }
+            $tag_alias = 'multi_tag_sel';
+            $q->joinTable(
+                $qb,
+                array(
+                    'alias' => $tag_alias,
+                )
+            )->on()->equalsField($tag_alias . '.bean_id', $main_table . '.id');
         } else {
             parent::addFilter($field, $filter, $where, $q);
         }
